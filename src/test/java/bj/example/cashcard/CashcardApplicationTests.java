@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.annotation.DirtiesContext;
@@ -28,7 +30,9 @@ class CashcardApplicationTests {
 	// Test méthode GET [Récupéraiton d'une ressource]
 	@Test
 	void shouldReturnACardWhenDataIsSaved() {
-		ResponseEntity<String> response = restTemplate.getForEntity("/cashcards/99", String.class);
+		ResponseEntity<String> response = restTemplate
+														.withBasicAuth("sarah1", "abc123")
+														.getForEntity("/cashcards/99", String.class);
 		// Vérification du status de la requête 
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
@@ -46,7 +50,9 @@ class CashcardApplicationTests {
 
 	@Test 
 	void shouldNotReturnACashCardWithAnUnknownId() {
-		ResponseEntity<String> response = restTemplate.getForEntity("/cashcards/1000", String.class);
+		ResponseEntity<String> response = restTemplate
+														.withBasicAuth("sarah1", "abc123")
+														.getForEntity("/cashcards/1000", String.class);
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 	}
 
@@ -55,14 +61,17 @@ class CashcardApplicationTests {
 	@Test 
 	@DirtiesContext
 	void shouldCreatedANewCashCard() {
-		CashCard newCashCard = new CashCard(null, 250.00);
-		ResponseEntity<Void> createResponse = restTemplate.postForEntity("/cashcards", newCashCard, Void.class);
-		assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-
+		CashCard newCashCard = new CashCard(null, 250.00, null);
+		ResponseEntity<Void> createResponse = restTemplate
+														.withBasicAuth("sarah1", "abc123")
+														.postForEntity("/cashcards", newCashCard, Void.class);
+ 
 		// Récupération de l'URI	
 		URI locationOfNewCashCard = createResponse.getHeaders().getLocation();
 		// Envoi d'une requête GET vers l'addrese contenue dans l'URI	
-		ResponseEntity<String> getResponse = restTemplate.getForEntity(locationOfNewCashCard, String.class);
+		ResponseEntity<String> getResponse = restTemplate
+														.withBasicAuth("sarah1", "abc123")
+														.getForEntity(locationOfNewCashCard, String.class);
 		assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
 		// Récupération du corps de la réponse 
@@ -78,8 +87,10 @@ class CashcardApplicationTests {
 
 	// Test de méthode GET [Récupération de toutes les cards]
 	@Test 
-	void shouldReturnAllCashCardWhenLisdIsRequested() {
-		ResponseEntity<String> response = restTemplate.getForEntity("/cashcards", String.class);
+	void shouldReturnAllCashCardWhenListdIsRequested() {
+		ResponseEntity<String> response = restTemplate
+														.withBasicAuth("sarah1", "abc123")
+														.getForEntity("/cashcards", String.class);
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
 		// Extraction des données de la réponse renvoyée 
@@ -99,7 +110,9 @@ class CashcardApplicationTests {
 	// Test pour la pagination 
 	@Test 
 	void shouldReturnAPageOfCashCards() {
-		ResponseEntity<String> response = restTemplate.getForEntity("/cashcards?page=0&size=1&sort=amount,desc", String.class);
+		ResponseEntity<String> response = restTemplate
+														.withBasicAuth("sarah1", "abc123")
+														.getForEntity("/cashcards?page=0&size=1&sort=amount,desc", String.class);
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
 		DocumentContext documentContext = JsonPath.parse(response.getBody());
@@ -109,6 +122,68 @@ class CashcardApplicationTests {
 		double amount = documentContext.read("$[0].amount");
 		assertThat(amount).isEqualTo(150.00);
 	}
+
+	// Test d'authentification des informations utilisateurs 
+	@Test 
+	void ShouldNotReturnACashCardWhenUsingBadCredentials() {
+		ResponseEntity<String> response = restTemplate
+												.withBasicAuth("BAD-USER", "abc123")
+												.getForEntity("/cashcards/99", String.class);
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+		response = restTemplate.withBasicAuth("sarah1", "BAD-PASSWORD")
+								.getForEntity("/cashcards/99", String.class);
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+	}
+
+	// Test d'authorisation de l'utilisateur admin 
+	@Test 
+	void shouldRejectUsersWhoAreNotCardOwners() {
+		ResponseEntity<String> response = restTemplate
+													.withBasicAuth("hank-owns-no-cards", "qrs456")
+													.getForEntity("/cashcards/99", String.class);
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+	}
+
+	// Test pour n'authoriser à l'utilisateur que la carte dont il est propriétaire 
+	@Test 
+	void shouldNotAllowAccessToCashCardsTheyDoNotOwn() {
+		ResponseEntity<String> response = restTemplate
+														.withBasicAuth("sarah1", "abc123")
+														.getForEntity("/cashcards/102", String.class);
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+	}
+
+	// Test pour les mises à jour d'une ressource existante 
+	@Test 
+	@DirtiesContext 
+	void shouldUpdateAnExistingCashCard() {
+		// Ressource avec les nouvelles valeurs
+		CashCard cashCardUpdate = new CashCard(null, 19.99, null); 
+		HttpEntity<CashCard> request = new HttpEntity<>(cashCardUpdate);
+		
+		// Envoie de la réquête locale
+		ResponseEntity<Void> response = restTemplate
+													.withBasicAuth("sarah1", "abc123")
+													.exchange("/cashcards/99", HttpMethod.PUT, request, Void.class);
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+		ResponseEntity<String> getResponse = restTemplate	
+														.withBasicAuth("sarah1", "abc123")
+														.getForEntity("/cashcards/99", String.class);
+		
+		assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+		DocumentContext documentContext = JsonPath.parse(getResponse.getBody());
+		// Récupération des propriétés du corps de la réponse de la requête
+		Number id = documentContext.read("$.id");
+		Double amount = documentContext.read("$.amount");
+		
+		// Vérification des égalités
+		assertThat(id).isEqualTo(99);
+		assertThat(amount).isEqualTo(19.99);
+	} 
 
 
 }
