@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,15 +37,22 @@ public class CashCardController {
     //     return ResponseEntity.ok(cashCardRepository.findAll());
     // }
 
+    // Méthode qui récupère le cashcard depuis le repository 
+    private CashCard findCashCard(Long requestedId, Principal principal) {
+        return cashCardRepository.findByIdAndOwner(requestedId, principal.getName());
+    }
+
     // Récupérer une ressource par son identifiant
     @GetMapping("/{requestedId}")
     public ResponseEntity<CashCard> findById(@PathVariable Long requestedId, Principal principal) {
-        Optional<CashCard> cashCardOptional = Optional.ofNullable(cashCardRepository.findByIdAndOwner(requestedId, principal.getName()));
-        if (cashCardOptional.isPresent()) {
-            return ResponseEntity.ok(cashCardOptional.get());
-        } else {
-            return ResponseEntity.notFound().build();
-        }
+       CashCard cashCard = findCashCard(requestedId, principal); 
+
+       if (cashCard != null) {
+        return ResponseEntity.ok(cashCard);
+       }else {
+        return ResponseEntity.notFound().build();
+       }
+
     }
 
     // Récupération des ressources paginées 
@@ -71,11 +79,27 @@ public class CashCardController {
     // Mise à jour d'une ressource 
     @PutMapping("/{requestedId}")
     private ResponseEntity<Void> putCashCard(@PathVariable Long requestedId, @RequestBody CashCard cashCardUpdate, Principal principal) {
-        CashCard cashCard = cashCardRepository.findByIdAndOwner(requestedId, principal.getName());
-        CashCard updateCashCard = new CashCard(cashCard.id(), cashCardUpdate.amount(), principal.getName());
+        CashCard cashCard = findCashCard(requestedId, principal);
+        if(cashCard != null) {
+            CashCard updateCashCard = new CashCard(cashCard.id(), cashCardUpdate.amount(), principal.getName());
+    
+            // Sauvegarde de la resssource 
+            cashCardRepository.save(updateCashCard);
+            return ResponseEntity.noContent().build();
 
-        // Sauvegarde de la resssource 
-        cashCardRepository.save(updateCashCard);
-        return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.notFound().build();
+
+    }
+
+    // Suppression d'une ressource 
+    @DeleteMapping("/{id}")
+    private ResponseEntity<Void> deleteCashCard(@PathVariable Long id, Principal principal) {
+        if (cashCardRepository.existsByIdAndOwner(id, principal.getName())) {
+            cashCardRepository.deleteById(id);
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.notFound().build();
+        
     }
 }

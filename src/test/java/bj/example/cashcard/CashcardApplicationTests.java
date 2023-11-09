@@ -169,6 +169,7 @@ class CashcardApplicationTests {
 													.exchange("/cashcards/99", HttpMethod.PUT, request, Void.class);
 		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
 
+		//Envoie d'une requête Get pour récupérer la ressource crée 
 		ResponseEntity<String> getResponse = restTemplate	
 														.withBasicAuth("sarah1", "abc123")
 														.getForEntity("/cashcards/99", String.class);
@@ -184,6 +185,52 @@ class CashcardApplicationTests {
 		assertThat(id).isEqualTo(99);
 		assertThat(amount).isEqualTo(19.99);
 	} 
+
+	// Test pour tentative de mise à jour d'une carte qui n'existe pas 
+	@Test 
+	void shouldNotUpdateACashCardThatDoesNotExist() {
+		CashCard unknownCard = new CashCard(null, 19.99, null);
+
+		HttpEntity<CashCard> request = new HttpEntity<>(unknownCard);
+		ResponseEntity<Void> response = restTemplate
+													.withBasicAuth("sarah1", "abc123")
+													.exchange("/cashcards/9999", HttpMethod.PUT, request, Void.class);
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+	}
+
+
+	// Test de suppression d'une cashCard 
+	@Test 
+	@DirtiesContext 
+	void shouldDeleteAnExistingCashCard() {
+		ResponseEntity<Void> response = restTemplate
+													.withBasicAuth("sarah1", "abc123")
+													.exchange("/cashcards/99", HttpMethod.DELETE, null, Void.class);
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+		// Lancer une requête avec l'id de la ressource supprimer et vérifier le status de la réponse 
+		ResponseEntity<String> getResponse = restTemplate
+														.withBasicAuth("sarah1", "abc123")
+														.getForEntity("/cashcards/99", String.class);
+		assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+	}
+
+
+	// Test pour refuser les droit de suppression à un utilisateur qui n'est pas propriétaire de la carte 
+	@Test 
+	void shouldNotAllowDeletionOfCashCardsTheyDoNotOwn() {
+		ResponseEntity<Void> deleteResponse = restTemplate
+														.withBasicAuth("sarah1", "abc123")
+														.exchange("/cashcards/102", HttpMethod.DELETE, null, Void.class);
+		assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+		// vérifions si la ressource est toujours là 
+		ResponseEntity<String> getResponse = restTemplate
+														.withBasicAuth("kumar2", "xyz789")
+														.getForEntity("/cashcards/102", String.class);
+		assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+	}
 
 
 }
